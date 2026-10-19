@@ -1,11 +1,12 @@
-﻿using Abtracciones.Modelos;
+﻿using Abtracciones.Interfaces;
+using Abtracciones.Modelos;
 using System;
 using System.Collections.Generic;
 using System.Text;
 
 namespace DA
 {
-    public class TicketDA
+    public class TicketDA : ITicketDA
     {
         private static readonly List<Ticket> _tickets = new List<Ticket>
         {
@@ -35,5 +36,43 @@ namespace DA
             new Ticket { Id = 24, Codigo = "INC-000024", Titulo = "No carga sitio web corporativo", Descripcion = "Error de DNS al intentar ingresar desde el exterior.", Prioridad = PrioridadTicket.Critica, Estado = EstadoTicket.Abierto, ClienteId = 1, AgenteId = null, Reaperturas = 0, FechaCreacion = DateTime.Now.AddHours(-4), FechaActualizacion = DateTime.Now.AddHours(-4) },
             new Ticket { Id = 25, Codigo = "INC-000025", Titulo = "Configuración de firma de correo", Descripcion = "Plantilla estándar con el nuevo logo institucional.", Prioridad = PrioridadTicket.Baja, Estado = EstadoTicket.Abierto, ClienteId = 2, AgenteId = null, Reaperturas = 0, FechaCreacion = DateTime.Now.AddHours(-1), FechaActualizacion = DateTime.Now.AddHours(-1) }
         };
+        public List<Ticket> ObtenerTodos()
+        {
+            return _tickets;
+        }
+
+        public Ticket? ObtenerPorId(int id)
+        {
+            return _tickets.FirstOrDefault(t => t.Id == id);
+        }
+
+        public Ticket? ObtenerPorCodigo(string codigo)
+        {
+            return _tickets.FirstOrDefault(t => string.Equals(t.Codigo, codigo, StringComparison.OrdinalIgnoreCase));
+        }
+
+        public int ObtenerSiguienteId()
+        {
+            return _tickets.Count > 0 ? _tickets.Max(t => t.Id) + 1 : 1;
+        }
+
+        public int ObtenerSiguienteSecuencia()
+        {
+            return _tickets.Count + 1;
+        }
+
+        public void Agregar(Ticket ticket)
+        {
+            _tickets.Add(ticket);
+        }
+
+        public void Actualizar(Ticket ticket)
+        {
+            var indice = _tickets.FindIndex(t => t.Id == ticket.Id);
+            if (indice != -1)
+            {
+                _tickets[indice] = ticket;
+            }
+        }
     }
 }

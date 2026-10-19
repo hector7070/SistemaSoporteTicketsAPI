@@ -1,40 +1,66 @@
 using Abtracciones.Interfaces;
-using Scalar.AspNetCore;
-using DA;
-using Flujo;
 using Abtracciones.Modelos;
-using Microsoft.EntityFrameworkCore;
+using API.Reglas;
+using DA;
 using DA.Contexto;
+using Flujo;
+using Microsoft.EntityFrameworkCore;
+using Scalar.AspNetCore;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+    });
 
-builder.Services.AddControllers();
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
+builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddOpenApi();
+builder.Services.AddProblemDetails();
 
 
-//Inyeccion de dependencias
+builder.Services.Configure<RouteOptions>(options =>
+{
+    options.ConstraintMap.Add("codigoTicket", typeof(API.Reglas.CodigoTicketConstraint));
+});
+
+// Inyección de dependencias
 builder.Services.AddScoped<IClienteDA, ClienteDA>();
 builder.Services.AddScoped<IClienteFlujo, ClienteFlujo>();
+builder.Services.AddSingleton<ITicketDA, TicketDA>();
+builder.Services.AddScoped<ITicketFlujo, TicketFlujo>();
 
-var cadenaConexion = builder.Configuration.GetConnectionString("SistemaSoporte")??
-    throw new InvalidOperationException("Falta la cadena de conexión para SistemaSoporte en la configuracion") ;
+var cadenaConexion = builder.Configuration.GetConnectionString("SistemaSoporte")
+    ?? throw new InvalidOperationException("Falta la cadena de conexión para SistemaSoporte en la configuracion");
 
 builder.Services.AddDbContext<SistemaSoporteContexto>(opciones =>
     opciones.UseSqlServer(cadenaConexion));
 
+
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+app.UseStatusCodePages();
+app.UseExceptionHandler();
+
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
     app.MapScalarApiReference();
 }
 
-app.MapGet("/min/clientes",(IClienteFlujo flujo) => Results.Ok(flujo.Obtener()));
+app.UseDefaultFiles();
+
+// Habilita al servidor los archivos estáticos que viven en wwwroot (WebRoot)
+app.UseStaticFiles();
+
+app.UseAuthorization();
+app.MapControllers();
+
+#region Minimal API - Clientes
+
+app.MapGet("/min/clientes", (IClienteFlujo flujo) => Results.Ok(flujo.Obtener()));
 
 app.MapGet("/min/clientes/{id:int}", (int id, IClienteFlujo flujo) =>
 {
@@ -59,15 +85,40 @@ app.MapPost("/min/clientes", (Cliente cliente, IClienteFlujo flujo) =>
 //    return Results.Ok(q.Skip((Math.Max(pagina, 1)-1) *5).Take(5));
 //});
 
+#endregion
 
-//Nos permite que "/" sirva wwwroot/index.html, wwwroot/default.html o wwwroot/default.htm como página de inicio del sitio web
-app.UseDefaultFiles();
+#region Minimal API - Tickets
 
-//Habilita al servidor los archivos estáticos que viven en wwwroot(WebRoot)
-app.UseStaticFiles();
+app.MapGet("/min/tickets/resumen", (ITicketFlujo ticketFlujo) =>
+{
+    return Results.Ok(ticketFlujo.ObtenerResumen());
+})
+.WithName("ObtenerResumenTickets")
+.WithSummary("Devuelve el resumen de tickets por estado y prioridad")
+.Produces(200);
 
-app.UseAuthorization();
+app.MapPost("/min/tickets/{id:int}/reabrir", (int id, ITicketFlujo ticketFlujo) =>
+{
+    try
+    {
+        var ticket = ticketFlujo.Reabrir(id);
+        return Results.Ok(ticket);
+    }
+    catch (Abtracciones.Excepciones.NotFoundException ex)
+    {
+        return Results.Problem(detail: ex.Message, statusCode: 404, title: "Not Found");
+    }
+    catch (Abtracciones.Excepciones.ReglaNegocio ex)
+    {
+        return Results.Problem(detail: ex.Message, statusCode: 409, title: "Conflict - Regla de Negocio");
+    }
+})
+.WithName("ReabrirTicket")
+.WithSummary("Reabre un ticket resuelto cambiándolo a EnProceso")
+.Produces(200)
+.ProducesProblem(404)
+.ProducesProblem(409);
 
-app.MapControllers();
+#endregion
 
 app.Run();
